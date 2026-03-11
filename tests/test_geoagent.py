@@ -88,7 +88,44 @@ class TestImports(unittest.TestCase):
         self.assertIsInstance(keys, dict)
         self.assertIn("openai", keys)
 
-    def test_add_custom_catalog(self):
+    def test_ui_exports(self):
+        """Test that geoagent.ui exports PAGES_DIR and launch_ui (not APP_PATH)."""
+        import geoagent.ui as ui
+
+        self.assertTrue(hasattr(ui, "PAGES_DIR"), "PAGES_DIR must be exported")
+        self.assertTrue(hasattr(ui, "launch_ui"), "launch_ui must be exported")
+        self.assertFalse(hasattr(ui, "APP_PATH"), "APP_PATH must NOT be exported")
+        self.assertIsInstance(ui.PAGES_DIR, str)
+
+    def test_cli_uses_launch_ui(self):
+        """Test that the CLI module imports launch_ui not APP_PATH."""
+        import ast
+        import os
+
+        cli_path = os.path.join(
+            os.path.dirname(__file__), "..", "geoagent", "cli.py"
+        )
+        with open(cli_path) as fh:
+            source = fh.read()
+
+        self.assertNotIn(
+            "APP_PATH",
+            source,
+            "cli.py must not reference the removed APP_PATH symbol",
+        )
+        self.assertIn(
+            "launch_ui",
+            source,
+            "cli.py must use launch_ui from geoagent.ui",
+        )
+
+    def test_cli_import(self):
+        """Test that the CLI module can be imported without errors."""
+        from geoagent import cli
+
+        self.assertTrue(hasattr(cli, "main"))
+
+
         """Test adding a custom catalog to the registry."""
         from geoagent.catalogs.registry import CatalogRegistry
 
