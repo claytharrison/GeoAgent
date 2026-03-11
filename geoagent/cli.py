@@ -1,29 +1,26 @@
 """GeoAgent CLI.
 
 Commands:
-  geoagent ui        Launch the Streamlit UI
+  geoagent ui        Launch the Solara UI
   geoagent --help    Show help
 """
 
 from __future__ import annotations
 
 import argparse
-import sys
-import subprocess
 
 
-def _run_streamlit_app() -> int:
+def _run_solara_ui() -> int:
     try:
-        from geoagent.ui import APP_PATH
+        from geoagent.ui import launch_ui
     except Exception as e:
         print(f"Failed to locate UI app: {e}")
         return 1
 
-    cmd = [sys.executable, "-m", "solara", "run", APP_PATH]
     try:
-        return subprocess.call(cmd)
-    except FileNotFoundError:
-        print("Solara is not installed. Install with `pip install solara`.\n")
+        return launch_ui()
+    except RuntimeError as e:
+        print(f"{e}\nInstall with `pip install geoagent[ui]`.\n")
         return 1
 
 
@@ -34,12 +31,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     subparsers = parser.add_subparsers(dest="command", metavar="command")
 
-    subparsers.add_parser("ui", help="Launch the Streamlit UI")
+    subparsers.add_parser("ui", help="Launch the Solara UI")
 
     args = parser.parse_args(argv)
 
     if args.command == "ui":
-        return _run_streamlit_app()
+        return _run_solara_ui()
 
     # No command: show help
     parser.print_help()

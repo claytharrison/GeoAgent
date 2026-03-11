@@ -14,6 +14,7 @@ Layout:
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any, Dict, List, Optional
 import inspect
 import queue
@@ -37,12 +38,24 @@ logger = logging.getLogger(__name__)
 messages: solara.Reactive[List[Dict[str, str]]] = solara.reactive([])
 provider: solara.Reactive[str] = solara.reactive("ollama")
 model: solara.Reactive[str] = solara.reactive("")
+# OpenAI-compatible base URL — seeded from env vars if present
+base_url: solara.Reactive[str] = solara.reactive(
+    os.environ.get("OPENAI_BASE_URL") or os.environ.get("OPENAI_API_BASE") or ""
+)
 processing: solara.Reactive[bool] = solara.reactive(False)
 status_text: solara.Reactive[str] = solara.reactive("")
 last_code: solara.Reactive[str] = solara.reactive("")
 
 _agent_store: Dict[str, Any] = {"agent": None, "key": None}
 PROVIDER_LIST = list(PROVIDERS.keys())
+
+# Suggested models per provider. The first entry is the default.
+_MODEL_SUGGESTIONS: Dict[str, List[str]] = {
+    "openai": ["gpt-4.1", "qwen-coder-30b", "glm-4.7-355b", "gpt-4o", "gpt-4o-mini"],
+    "anthropic": ["claude-sonnet-4-5-20250929", "claude-3-5-haiku-20241022"],
+    "google": ["gemini-2.5-flash", "gemini-2.0-flash"],
+    "ollama": ["llama3.1", "llama3", "mistral", "codellama"],
+}
 
 
 # ---------------------------------------------------------------------------
@@ -54,10 +67,13 @@ def _get_default_model(prov: str) -> str:
     return PROVIDERS.get(prov, {}).get("default_model", "gpt-4.1")
 
 
-def _get_or_create_agent(prov: str, mdl: str) -> GeoAgent:
-    key = f"{prov}:{mdl}"
+def _get_or_create_agent(prov: str, mdl: str, url: str = "") -> GeoAgent:
+    key = f"{prov}:{mdl}:{url}"
     if _agent_store["key"] != key or _agent_store["agent"] is None:
-        llm = get_llm(provider=prov, model=mdl)
+        kwargs: Dict[str, Any] = {}
+        if prov == "openai" and url:
+            kwargs["base_url"] = url
+        llm = get_llm(provider=prov, model=mdl, **kwargs)
         _agent_store["agent"] = GeoAgent(llm=llm, provider=prov, model=mdl)
         _agent_store["key"] = key
     return _agent_store["agent"]
@@ -90,7 +106,8 @@ def _run_query(query: str, target_map, status_callback=None) -> str:
     try:
         prov = provider.value
         mdl = model.value or _get_default_model(prov)
-        agent = _get_or_create_agent(prov, mdl)
+        url = base_url.value.strip() if prov == "openai" else ""
+        agent = _get_or_create_agent(prov, mdl, url)
 
         logger.info(f"Running query: {query}")
         result = _chat_with_status(
@@ -385,11 +402,32 @@ def Page():
                     ),
                     style={"flex": "1"},
                 )
-                solara.InputText(
+                solara.Select(
                     label="Model",
                     value=model.value or _get_default_model(provider.value),
+                    values=_MODEL_SUGGESTIONS.get(
+                        provider.value,
+                        [_get_default_model(provider.value)],
+                    ),
                     on_value=model.set,
                     style={"flex": "1"},
+                )
+
+            # Custom model name (shown below the dropdowns for overrides)
+            solara.InputText(
+                label="Custom model name (overrides selection above)",
+                value=model.value,
+                on_value=model.set,
+                style={"width": "100%"},
+            )
+
+            # OpenAI-compatible base URL (only shown for openai provider)
+            if provider.value == "openai":
+                solara.InputText(
+                    label="Base URL (OpenAI-compatible endpoint)",
+                    value=base_url.value,
+                    on_value=base_url.set,
+                    style={"width": "100%"},
                 )
 
             solara.HTML(tag="hr", style={"margin": "4px 0"})
